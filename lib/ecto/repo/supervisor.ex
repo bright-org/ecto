@@ -166,7 +166,7 @@ defmodule Ecto.Repo.Supervisor do
   end
 
   defp parse_integer!(key, value, url) do
-    case Integer.parse(value) do
+    case Ecto.Compat.integer_parse(value) do
       {int, ""} ->
         int
 
