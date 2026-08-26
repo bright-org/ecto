@@ -317,10 +317,13 @@ defmodule Ecto.UUID do
   end
 
   defp next_ascending do
-    if function_exported?(:persistent_term, :get, 2) do
-      next_ascending_atomics()
-    else
-      next_ascending_ets()
+    try do
+      case :ets.lookup(:ecto_uuid_ts, :nanosecond) do
+        [{:nanosecond, _}] -> next_ascending_ets()
+        [] -> next_ascending_ets()
+      end
+    catch
+      :error, :badarg -> next_ascending_atomics()
     end
   end
 

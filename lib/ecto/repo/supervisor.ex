@@ -27,7 +27,13 @@ defmodule Ecto.Repo.Supervisor do
   def init_config(type, repo, otp_app, opts) do
     config = Application.get_env(otp_app, repo, [])
     config = [otp_app: otp_app] ++ (@defaults |> Keyword.merge(config) |> Keyword.merge(opts))
-    config = Keyword.put_new_lazy(config, :telemetry_prefix, fn -> telemetry_prefix(repo) end)
+
+    config =
+      if Keyword.has_key?(config, :telemetry_prefix) do
+        config
+      else
+        Keyword.put(config, :telemetry_prefix, telemetry_prefix(repo))
+      end
 
     case repo_init(type, repo, config) do
       {:ok, config} ->
@@ -59,7 +65,9 @@ defmodule Ecto.Repo.Supervisor do
   end
 
   defp repo_init(type, repo, config) do
-    if Code.ensure_loaded?(repo) and function_exported?(repo, :init, 2) do
+    # Avoid Code.ensure_loaded?/1 — unavailable on AtomVM. The repo module is
+    # already loaded when its supervisor starts.
+    if function_exported?(repo, :init, 2) do
       repo.init(type, config)
     else
       {:ok, config}
