@@ -161,19 +161,23 @@ defmodule Ecto.Repo.Preloader do
       on_preloader_spawn = Keyword.get(opts, :on_preloader_spawn, fn -> :ok end)
       log_level = caller_log_level()
 
-      preloaders
-      |> Task.async_stream(
-        fn preloader ->
-          put_log_level(log_level)
-          on_preloader_spawn.()
-          preloader.({adapter_meta, opts})
-        end,
-        timeout: :infinity
-      )
-      |> Enum.map(fn
-        {:ok, assoc} -> assoc
-        {:exit, reason} -> exit(reason)
-      end)
+      if function_exported?(Task, :async_stream, 3) do
+        preloaders
+        |> Task.async_stream(
+          fn preloader ->
+            put_log_level(log_level)
+            on_preloader_spawn.()
+            preloader.({adapter_meta, opts})
+          end,
+          timeout: :infinity
+        )
+        |> Enum.map(fn
+          {:ok, assoc} -> assoc
+          {:exit, reason} -> exit(reason)
+        end)
+      else
+        Enum.map(preloaders, & &1.({adapter_meta, opts}))
+      end
     else
       Enum.map(preloaders, & &1.({adapter_meta, opts}))
     end

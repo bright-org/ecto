@@ -31,7 +31,7 @@ defmodule Ecto.Repo.Registry do
 
   @impl true
   def init(:ok) do
-    table = :ets.new(__MODULE__, [:named_table, read_concurrency: true])
+    table = :ets.new(__MODULE__, [:named_table])
     {:ok, table}
   end
 

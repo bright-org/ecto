@@ -317,15 +317,23 @@ defmodule Ecto.UUID do
   end
 
   defp next_ascending do
+    try do
+      case :ets.lookup(:ecto_uuid_ts, :nanosecond) do
+        [{:nanosecond, _}] -> next_ascending_ets()
+        [] -> next_ascending_ets()
+      end
+    catch
+      :error, :badarg -> next_ascending_atomics()
+    end
+  end
+
+  defp next_ascending_atomics do
     timestamp_ref =
       :persistent_term.get({__MODULE__, :nanosecond}, nil) || raise "Ecto has not been started"
 
     previous_ts = :atomics.get(timestamp_ref, 1)
     min_step_ts = previous_ts + @ns_minimal_step
     current_ts = System.system_time(:nanosecond)
-
-    # If the current timestamp is not at least the minimal step greater than the
-    # previous step, then we make it so.
     new_ts = max(current_ts, min_step_ts)
 
     compare_exchange(timestamp_ref, previous_ts, new_ts)
@@ -333,12 +341,23 @@ defmodule Ecto.UUID do
 
   defp compare_exchange(timestamp_ref, previous_ts, new_ts) do
     case :atomics.compare_exchange(timestamp_ref, 1, previous_ts, new_ts) do
-      # If the new value was written, then we return it.
       :ok -> new_ts
-      # Otherwise, the atomic value has changed in the meantime. We add the
-      # minimal step value to that and try again.
       updated_ts -> compare_exchange(timestamp_ref, updated_ts, updated_ts + @ns_minimal_step)
     end
+  end
+
+  defp next_ascending_ets do
+    previous_ts =
+      case :ets.lookup(:ecto_uuid_ts, :nanosecond) do
+        [{:nanosecond, ts}] -> ts
+        [] -> 0
+      end
+
+    min_step_ts = previous_ts + @ns_minimal_step
+    current_ts = System.system_time(:nanosecond)
+    new_ts = max(current_ts, min_step_ts)
+    :ets.insert(:ecto_uuid_ts, {:nanosecond, new_ts})
+    new_ts
   end
 
   # Callback invoked by autogenerate fields.

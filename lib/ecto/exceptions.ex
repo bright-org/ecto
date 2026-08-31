@@ -200,13 +200,10 @@ defmodule Ecto.NoResultsError do
   defexception [:message]
 
   def exception(opts) do
-    query = Keyword.fetch!(opts, :queryable) |> Ecto.Queryable.to_query()
+    _query = Keyword.fetch!(opts, :queryable) |> Ecto.Queryable.to_query()
 
-    msg = """
-    expected at least one result but got none in query:
-
-    #{Inspect.Ecto.Query.to_string(query)}
-    """
+    # Avoid Inspect.Ecto.Query on AtomVM (missing Module.split/1 and friends).
+    msg = "expected at least one result but got none in query"
 
     %__MODULE__{message: msg}
   end

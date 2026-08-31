@@ -887,7 +887,7 @@ defmodule Ecto.Type do
   # We check for the byte size to avoid creating unnecessary large integers
   # which would never map to a database key (u64 is 20 digits only).
   defp cast_integer(term) when is_binary(term) and byte_size(term) < 32 do
-    case Integer.parse(term) do
+    case Ecto.Compat.integer_parse(term) do
       {integer, ""} -> {:ok, integer}
       _ -> :error
     end
@@ -1545,7 +1545,7 @@ defmodule Ecto.Type do
   end
 
   defp to_i(bin) when is_binary(bin) and byte_size(bin) < 32 do
-    case Integer.parse(bin) do
+    case Ecto.Compat.integer_parse(bin) do
       {int, ""} -> int
       _ -> nil
     end
