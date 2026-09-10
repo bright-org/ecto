@@ -3,27 +3,28 @@ defmodule Ecto.Application do
   use Application
 
   def start(_type, _args) do
-    init_uuid_timestamp()
-
-    children = [
-      Ecto.Repo.Registry
-    ]
+    children =
+      case init_uuid_timestamp() do
+        :clock -> [Ecto.UUID.Clock, Ecto.Repo.Registry]
+        :atomics -> [Ecto.Repo.Registry]
+      end
 
     opts = [strategy: :one_for_one, name: Ecto.Supervisor]
     Supervisor.start_link(children, opts)
   end
 
   defp init_uuid_timestamp do
-    # Always use ETS on AtomVM (no atomics/persistent_term). Detect via :atomvm
-    # without loading missing OTP modules.
+    # Always use the serialized clock on AtomVM (no atomics/persistent_term).
+    # Detect via :atomvm without loading missing OTP modules.
     if function_exported?(:erlang, :system_info, 1) and atomvm_runtime?() do
-      init_uuid_timestamp_ets()
+      :clock
     else
       try do
         ref = :atomics.new(1, signed: false)
         :ok = :persistent_term.put({Ecto.UUID, :nanosecond}, ref)
+        :atomics
       catch
-        _, _ -> init_uuid_timestamp_ets()
+        _, _ -> :clock
       end
     end
   end
@@ -37,11 +38,5 @@ defmodule Ecto.Application do
     _ -> false
   catch
     _, _ -> false
-  end
-
-  defp init_uuid_timestamp_ets do
-    table = :ets.new(:ecto_uuid_ts, [:set, :public, :named_table])
-    :ets.insert(table, {:nanosecond, 0})
-    :ok
   end
 end

@@ -176,11 +176,41 @@ defmodule Ecto.Repo.Preloader do
           {:exit, reason} -> exit(reason)
         end)
       else
-        Enum.map(preloaders, & &1.({adapter_meta, opts}))
+        # AtomVM has no Task.async_stream; spawn workers to keep parallel semantics.
+        pmap_spawn(preloaders, adapter_meta, opts, log_level, on_preloader_spawn)
       end
     else
       Enum.map(preloaders, & &1.({adapter_meta, opts}))
     end
+  end
+
+  defp pmap_spawn(preloaders, adapter_meta, opts, log_level, on_preloader_spawn) do
+    parent = self()
+
+    workers =
+      Enum.map(preloaders, fn preloader ->
+        ref = make_ref()
+
+        pid =
+          spawn(fn ->
+            put_log_level(log_level)
+            on_preloader_spawn.()
+            send(parent, {ref, preloader.({adapter_meta, opts})})
+          end)
+
+        {ref, pid, Process.monitor(pid)}
+      end)
+
+    Enum.map(workers, fn {ref, pid, mref} ->
+      receive do
+        {^ref, assoc} ->
+          Process.demonitor(mref, [:flush])
+          assoc
+
+        {:DOWN, ^mref, :process, ^pid, reason} ->
+          exit(reason)
+      end
+    end)
   end
 
   # Logger.get_process_level/1 and put_process_level/2 require Elixir 1.15+.

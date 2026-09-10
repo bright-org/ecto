@@ -317,13 +317,10 @@ defmodule Ecto.UUID do
   end
 
   defp next_ascending do
-    try do
-      case :ets.lookup(:ecto_uuid_ts, :nanosecond) do
-        [{:nanosecond, _}] -> next_ascending_ets()
-        [] -> next_ascending_ets()
-      end
-    catch
-      :error, :badarg -> next_ascending_atomics()
+    if Process.whereis(Ecto.UUID.Clock) do
+      Ecto.UUID.Clock.next_ascending(@ns_minimal_step)
+    else
+      next_ascending_atomics()
     end
   end
 
@@ -344,20 +341,6 @@ defmodule Ecto.UUID do
       :ok -> new_ts
       updated_ts -> compare_exchange(timestamp_ref, updated_ts, updated_ts + @ns_minimal_step)
     end
-  end
-
-  defp next_ascending_ets do
-    previous_ts =
-      case :ets.lookup(:ecto_uuid_ts, :nanosecond) do
-        [{:nanosecond, ts}] -> ts
-        [] -> 0
-      end
-
-    min_step_ts = previous_ts + @ns_minimal_step
-    current_ts = System.system_time(:nanosecond)
-    new_ts = max(current_ts, min_step_ts)
-    :ets.insert(:ecto_uuid_ts, {:nanosecond, new_ts})
-    new_ts
   end
 
   # Callback invoked by autogenerate fields.
