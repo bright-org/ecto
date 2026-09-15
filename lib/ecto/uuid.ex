@@ -28,6 +28,27 @@ defmodule Ecto.UUID do
 
   use Ecto.Type
 
+  @doc false
+  def child_spec(_opts) do
+    %{id: __MODULE__, start: {__MODULE__, :start_link, []}, type: :worker}
+  end
+
+  @doc false
+  def start_link do
+    GenServer.start_link(__MODULE__, 0, name: __MODULE__)
+  end
+
+  @doc false
+  def init(previous_ts), do: {:ok, previous_ts}
+
+  @doc false
+  def handle_call({:next_ascending, minimal_step}, _from, previous_ts) do
+    min_step_ts = previous_ts + minimal_step
+    current_ts = System.system_time(:nanosecond)
+    new_ts = max(current_ts, min_step_ts)
+    {:reply, new_ts, new_ts}
+  end
+
   @typedoc """
   A hex-encoded UUID string.
   """
@@ -317,30 +338,7 @@ defmodule Ecto.UUID do
   end
 
   defp next_ascending do
-    if Process.whereis(Ecto.UUID.Clock) do
-      Ecto.UUID.Clock.next_ascending(@ns_minimal_step)
-    else
-      next_ascending_atomics()
-    end
-  end
-
-  defp next_ascending_atomics do
-    timestamp_ref =
-      :persistent_term.get({__MODULE__, :nanosecond}, nil) || raise "Ecto has not been started"
-
-    previous_ts = :atomics.get(timestamp_ref, 1)
-    min_step_ts = previous_ts + @ns_minimal_step
-    current_ts = System.system_time(:nanosecond)
-    new_ts = max(current_ts, min_step_ts)
-
-    compare_exchange(timestamp_ref, previous_ts, new_ts)
-  end
-
-  defp compare_exchange(timestamp_ref, previous_ts, new_ts) do
-    case :atomics.compare_exchange(timestamp_ref, 1, previous_ts, new_ts) do
-      :ok -> new_ts
-      updated_ts -> compare_exchange(timestamp_ref, updated_ts, updated_ts + @ns_minimal_step)
-    end
+    GenServer.call(__MODULE__, {:next_ascending, @ns_minimal_step})
   end
 
   # Callback invoked by autogenerate fields.
