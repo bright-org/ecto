@@ -887,7 +887,7 @@ defmodule Ecto.Type do
   # We check for the byte size to avoid creating unnecessary large integers
   # which would never map to a database key (u64 is 20 digits only).
   defp cast_integer(term) when is_binary(term) and byte_size(term) < 32 do
-    case Ecto.Compat.integer_parse(term) do
+    case Ecto.Type.integer_parse(term) do
       {integer, ""} -> {:ok, integer}
       _ -> :error
     end
@@ -1545,7 +1545,7 @@ defmodule Ecto.Type do
   end
 
   defp to_i(bin) when is_binary(bin) and byte_size(bin) < 32 do
-    case Ecto.Compat.integer_parse(bin) do
+    case Ecto.Type.integer_parse(bin) do
       {int, ""} -> int
       _ -> nil
     end
@@ -1605,4 +1605,31 @@ defmodule Ecto.Type do
     To support them, you can create a custom type.
     """
   end
+
+  @doc false
+  def integer_parse(bin) when is_binary(bin) do
+    integer_parse(bin, nil, <<>>)
+  end
+
+  def integer_parse(other) when not is_binary(other), do: :error
+
+  defp integer_parse(<<c, rest::binary>>, nil, _acc) when c in [?+, ?-] do
+    integer_parse(rest, <<c>>, <<>>)
+  end
+
+  defp integer_parse(<<c, rest::binary>>, sign, acc) when c >= ?0 and c <= ?9 do
+    integer_parse(rest, sign, <<acc::binary, c>>)
+  end
+
+  defp integer_parse(rest, sign, acc) when byte_size(acc) > 0 do
+    charlist =
+      case sign do
+        nil -> :erlang.binary_to_list(acc)
+        s -> :erlang.binary_to_list(s) ++ :erlang.binary_to_list(acc)
+      end
+
+    {:erlang.list_to_integer(charlist), rest}
+  end
+
+  defp integer_parse(_rest, _sign, _acc), do: :error
 end
