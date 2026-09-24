@@ -58,11 +58,47 @@ defmodule Ecto.Repo.Supervisor do
     end
   end
 
-  defp telemetry_prefix(repo) do
-    repo
-    |> Module.split()
-    |> Enum.map(&(&1 |> Macro.underscore() |> String.to_atom()))
+  # AtomVM lacks Module.split/1 and Macro.underscore/1. Reproduce the same
+  # telemetry_prefix as upstream: split "Elixir.A.B" then underscore each segment.
+  defp telemetry_prefix(repo) when is_atom(repo) do
+    segments =
+      case :erlang.atom_to_binary(repo) do
+        <<"Elixir.", rest::binary>> -> :binary.split(rest, ".", [:global])
+        bin when is_binary(bin) -> :binary.split(bin, ".", [:global])
+      end
+
+    :lists.map(
+      fn seg -> :erlang.binary_to_atom(underscore_segment(seg), :utf8) end,
+      segments
+    )
   end
+
+  defp underscore_segment(<<h, t::binary>>), do: <<to_lower_char(h)>> <> do_underscore(t, h)
+  defp underscore_segment(<<>>), do: <<>>
+
+  defp do_underscore(<<h, t, rest::binary>>, _)
+       when h >= ?A and h <= ?Z and not (t >= ?A and t <= ?Z) and not (t >= ?0 and t <= ?9) and
+              t != ?. and t != ?_ do
+    <<?_, to_lower_char(h), t>> <> do_underscore(rest, t)
+  end
+
+  defp do_underscore(<<h, t::binary>>, prev)
+       when h >= ?A and h <= ?Z and not (prev >= ?A and prev <= ?Z) and prev != ?_ do
+    <<?_, to_lower_char(h)>> <> do_underscore(t, h)
+  end
+
+  defp do_underscore(<<?., t::binary>>, _) do
+    <<?/>> <> underscore_segment(t)
+  end
+
+  defp do_underscore(<<h, t::binary>>, _) do
+    <<to_lower_char(h)>> <> do_underscore(t, h)
+  end
+
+  defp do_underscore(<<>>, _), do: <<>>
+
+  defp to_lower_char(char) when char >= ?A and char <= ?Z, do: char + 32
+  defp to_lower_char(char), do: char
 
   defp repo_init(type, repo, config) do
     # Avoid Code.ensure_loaded?/1 — unavailable on AtomVM. The repo module is
